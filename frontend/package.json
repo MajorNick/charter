@@ -8,13 +8,12 @@
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
     "preview": "vite preview",
-    "start:prod": "serve -s dist -l tcp://0.0.0.0:${PORT:-4173}"
+    "start:prod": "node server.js"
   },
   "dependencies": {
     "charter": "file:..",
     "react": "^18.3.0",
-    "react-dom": "^18.3.0",
-    "serve": "^14.2.4"
+    "react-dom": "^18.3.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.0",
