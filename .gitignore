@@ -10,6 +10,9 @@ coverage/
 hs_err_pid*
 .codex/
 .agent/
+docs/
+MVP-DECISIONS.md
+TASKS.md
 backend/build/
 backend/.gradle/
 backend/.idea/
