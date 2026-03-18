@@ -242,7 +242,7 @@ function PieChartPreview({ preview }: { preview: PieChartPreviewResult }) {
           <div className="legend-row" key={slice.label}>
             <span className="legend-row__swatch" style={{ background: slice.color }} />
             <span className="legend-row__label">{slice.label}</span>
-            <span className="legend-row__value">{formatMetric(slice.value)} · {Math.round(slice.percent * 100)}%</span>
+            <span className="legend-row__value">{formatMetric(slice.value)} - {Math.round(slice.percent * 100)}%</span>
           </div>
         ))}
       </div>
@@ -299,3 +299,4 @@ function polarToCartesian(cx: number, cy: number, radius: number, angleInRadians
     y: cy + radius * Math.sin(angleInRadians),
   };
 }
+
