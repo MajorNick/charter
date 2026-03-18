@@ -10,6 +10,6 @@
     "dev:backend": "gradle -p backend bootRun",
     "test:backend": "gradle -p backend test",
     "build": "npm --workspace frontend run build && gradle -p backend build",
-    "start:frontend:prod": "npm --workspace frontend run start:prod"
+    "start:frontend:prod": "npm --prefix frontend run build && npm --prefix frontend run start:prod"
   }
 }
