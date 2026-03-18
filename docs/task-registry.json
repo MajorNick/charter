@@ -1,0 +1,277 @@
+{
+    "project":  "Charter",
+    "updated":  "2026-03-17",
+    "statusLegend":  [
+                         "todo",
+                         "in_progress",
+                         "blocked",
+                         "review",
+                         "done"
+                     ],
+    "tasks":  [
+                  {
+                      "id":  "T1",
+                      "title":  "Convert product brief into repo-ready scope, architecture, and task board",
+                      "area":  "planning",
+                      "owner":  "Product manager agent",
+                      "status":  "done",
+                      "statusReason":  "MVP plan, requirements, dependencies, and delegation briefs are documented.",
+                      "prerequisites":  [
+                                            "Project description received"
+                                        ],
+                      "dependencies":  [
+
+                                       ],
+                      "readyNow":  false,
+                      "scope":  [
+                                    "docs/charter-mvp-plan.md",
+                                    "docs/new-agent-quickstart.md",
+                                    "MVP-DECISIONS.md"
+                                ],
+                      "expectedOutput":  "Planning artifacts and execution-ready task board",
+                      "doneWhen":  "Scope, risks, and delegation briefs are committed and usable by other agents."
+                  },
+                  {
+                      "id":  "T2",
+                      "title":  "Bootstrap monorepo starter with frontend and backend directories",
+                      "area":  "platform",
+                      "owner":  "Platform agent",
+                      "status":  "done",
+                      "statusReason":  "Repo skeleton exists with React frontend and Spring Boot backend starter.",
+                      "prerequisites":  [
+                                            "T1"
+                                        ],
+                      "dependencies":  [
+                                           "T1"
+                                       ],
+                      "readyNow":  false,
+                      "scope":  [
+                                    "frontend/",
+                                    "backend/",
+                                    "README.md",
+                                    "package.json"
+                                ],
+                      "expectedOutput":  "Root workspace config and app scaffolds",
+                      "doneWhen":  "New contributors can identify where frontend and backend work belongs immediately."
+                  },
+                  {
+                      "id":  "T3",
+                      "title":  "Implement local file ingestion and schema preview",
+                      "area":  "frontend-data",
+                      "owner":  "Frontend data agent",
+                      "status":  "review",
+                      "statusReason":  "Upload, normalization, and schema preview flow implemented and frontend build validation passed.",
+                      "prerequisites":  [
+                                            "T1",
+                                            "T2"
+                                        ],
+                      "dependencies":  [
+                                           "T1",
+                                           "T2"
+                                       ],
+                      "readyNow":  false,
+                      "scope":  [
+                                    "frontend/src/**"
+                                ],
+                      "expectedOutput":  "Upload flow, parser adapters, normalization model, and schema preview state",
+                      "doneWhen":  "CSV and JSON files can be loaded and normalized into a consistent row model."
+                  },
+                  {
+                      "id":  "T4",
+                      "title":  "Define template contract and persisted template API model",
+                      "area":  "pipeline-contract",
+                      "owner":  "Pipeline contract agent",
+                      "status":  "review",
+                      "statusReason":  "Template schema, persisted DTOs, serialization helpers, and API client boundary are implemented and frontend build validation passed.",
+                      "prerequisites":  [
+                                            "T1",
+                                            "T2"
+                                        ],
+                      "dependencies":  [
+                                           "T1",
+                                           "T2"
+                                       ],
+                      "readyNow":  false,
+                      "scope":  [
+                                    "frontend/src/**",
+                                    "docs/charter-mvp-plan.md"
+                                ],
+                      "expectedOutput":  "Typed template schema, persisted template DTOs, and API contract utilities",
+                      "doneWhen":  "Builder state can be saved as template JSON and loaded by ULID without raw input data."
+                  },
+                  {
+                      "id":  "T5",
+                      "title":  "Implement transformation engine for Phase 1 operations",
+                      "area":  "data-pipeline",
+                      "owner":  "Data pipeline agent",
+                      "status":  "review",
+                      "statusReason":  "Transform engine, calculated-field evaluator, Vitest coverage, and production build validation are complete.",
+                      "prerequisites":  [
+                                            "T3",
+                                            "T4"
+                                        ],
+                      "dependencies":  [
+                                           "T3",
+                                           "T4"
+                                       ],
+                      "readyNow":  false,
+                      "scope":  [
+                                    "frontend/src/**"
+                                ],
+                      "expectedOutput":  "Execution layer and unit tests for filter, group, aggregate, sort, and calculated fields",
+                      "doneWhen":  "Supported steps run deterministically on normalized datasets."
+                  },
+                  {
+                      "id":  "T6",
+                      "title":  "Build no-code transformation builder UI",
+                      "area":  "frontend-workflow",
+                      "owner":  "Frontend workflow agent",
+                      "status":  "review",
+                      "statusReason":  "Step editors, reorder/remove controls, live transform preview, and frontend validation are complete.",
+                      "prerequisites":  [
+                                            "T3",
+                                            "T4",
+                                            "T5"
+                                        ],
+                      "dependencies":  [
+                                           "T3",
+                                           "T4",
+                                           "T5"
+                                       ],
+                      "readyNow":  false,
+                      "scope":  [
+                                    "frontend/src/**"
+                                ],
+                      "expectedOutput":  "Builder screens, step editors, and validation states for no-code transforms",
+                      "doneWhen":  "Users can configure supported transformations, including calculated fields, without writing code."
+                  },
+                  {
+                      "id":  "T7",
+                      "title":  "Implement chart mapping and render layer",
+                      "area":  "visualization",
+                      "owner":  "Visualization agent",
+                      "status":  "review",
+                      "statusReason":  "Chart mapping controls, lightweight chart preview renderer, Vitest coverage, and frontend build validation are complete.",
+                      "prerequisites":  [
+                                            "T3",
+                                            "T5"
+                                        ],
+                      "dependencies":  [
+                                           "T3",
+                                           "T5"
+                                       ],
+                      "readyNow":  false,
+                      "scope":  [
+                                    "frontend/src/**"
+                                ],
+                      "expectedOutput":  "Chart configuration UI and preview renderer",
+                      "doneWhen":  "Bar, line, and pie charts render from transformed output."
+                  },
+                  {
+                      "id":  "T8",
+                      "title":  "Implement persisted share/load/update/clone flow",
+                      "area":  "sharing",
+                      "owner":  "Sharing agent",
+                      "status":  "review",
+                      "statusReason":  "Public template route bootstrap, create/load/update/clone UI flow, share-link state, and frontend validation are complete.",
+                      "prerequisites":  [
+                                            "T4",
+                                            "T6",
+                                            "T7",
+                                            "T11"
+                                        ],
+                      "dependencies":  [
+                                           "T4",
+                                           "T6",
+                                           "T7",
+                                           "T11"
+                                       ],
+                      "readyNow":  false,
+                      "scope":  [
+                                    "frontend/src/**"
+                                ],
+                      "expectedOutput":  "Save panel, load bootstrap, clone action, and mismatch handling",
+                      "doneWhen":  "Public links load backend-stored templates, updates keep the same id, and clone creates a new ULID."
+                  },
+                  {
+                      "id":  "T9",
+                      "title":  "Add thin backend service and deployment surface",
+                      "area":  "backend-platform",
+                      "owner":  "Backend/platform agent",
+                      "status":  "review",
+                      "statusReason":  "Health and info endpoints, Gradle build contract, env contract notes, deploy notes, and frontend-aligned API metadata are implemented and ready for verification.",
+                      "prerequisites":  [
+                                            "T2"
+                                        ],
+                      "dependencies":  [
+                                           "T2"
+                                       ],
+                      "readyNow":  false,
+                      "scope":  [
+                                    "backend/**",
+                                    "README.md",
+                                    ".env.example"
+                                ],
+                      "expectedOutput":  "Spring Boot health route, metadata route, Gradle build contract, environment contract, and deploy notes",
+                      "doneWhen":  "Backend can run and deploy cleanly with Gradle without implying source-data storage or server-side processing."
+                  },
+                  {
+                      "id":  "T10",
+                      "title":  "Run integration QA and create example templates",
+                      "area":  "release",
+                      "owner":  "QA/release agent",
+                      "status":  "todo",
+                      "statusReason":  "Unblocked. Frontend authoring, persistence, share flow, backend platform surface, and backend persistence path are implemented and ready for QA.",
+                      "prerequisites":  [
+                                            "T3",
+                                            "T4",
+                                            "T5",
+                                            "T6",
+                                            "T7",
+                                            "T8",
+                                            "T9",
+                                            "T11"
+                                        ],
+                      "dependencies":  [
+                                           "T3",
+                                           "T4",
+                                           "T5",
+                                           "T6",
+                                           "T7",
+                                           "T8",
+                                           "T9",
+                                           "T11"
+                                       ],
+                      "readyNow":  true,
+                      "scope":  [
+                                    "frontend/**",
+                                    "backend/**",
+                                    "docs/**"
+                                ],
+                      "expectedOutput":  "Smoke checklist, sample inputs, and validated save/load/update/clone flows",
+                      "doneWhen":  "Happy-path authoring, save/update/clone, and template reuse are confirmed end to end."
+                  },
+                  {
+                      "id":  "T11",
+                      "title":  "Persist template configuration JSON in Postgres and expose public ULID routes",
+                      "area":  "backend-persistence",
+                      "owner":  "Backend persistence agent",
+                      "status":  "review",
+                      "statusReason":  "Template persistence layer, frontend-aligned API envelope, clone overrides, environment/docs updates, and backend tests are implemented and ready for verification.",
+                      "prerequisites":  [
+                                            "T2"
+                                        ],
+                      "dependencies":  [
+                                           "T2"
+                                       ],
+                      "readyNow":  false,
+                      "scope":  [
+                                    "backend/**",
+                                    "README.md",
+                                    ".env.example"
+                                ],
+                      "expectedOutput":  "Postgres schema/migration strategy, ULID generation, and create/read/update/clone endpoints for template configuration JSON",
+                      "doneWhen":  "Template config JSON is stored in Postgres, public read by ULID works, updates keep the same id, and clone creates a new ULID without storing raw source data."
+                  }
+              ]
+}

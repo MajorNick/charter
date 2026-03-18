@@ -1,0 +1,14 @@
+{
+  "name": "charter",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "dev:frontend": "npm --workspace frontend run dev",
+    "dev:backend": "gradle -p backend bootRun",
+    "test:backend": "gradle -p backend test",
+    "build": "npm --workspace frontend run build && gradle -p backend build"
+  }
+}
