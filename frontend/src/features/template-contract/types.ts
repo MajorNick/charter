@@ -154,11 +154,6 @@ export interface CreateTemplateRequest extends TemplateDraft {}
 
 export interface UpdateTemplateRequest extends TemplateDraft {}
 
-export interface CloneTemplateRequest {
-  name?: string;
-  description?: string | null;
-}
-
 export interface TemplateResponseEnvelope {
   template: PersistedTemplate;
 }

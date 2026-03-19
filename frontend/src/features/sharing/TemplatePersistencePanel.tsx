@@ -14,7 +14,6 @@ interface TemplatePersistencePanelProps {
   onDescriptionChange: (value: string) => void;
   onCreate: () => void;
   onUpdate: () => void;
-  onClone: () => void;
   onDetach: () => void;
 }
 
@@ -33,7 +32,6 @@ export function TemplatePersistencePanel(props: TemplatePersistencePanelProps) {
     onDescriptionChange,
     onCreate,
     onUpdate,
-    onClone,
     onDetach,
   } = props;
 
@@ -83,16 +81,13 @@ export function TemplatePersistencePanel(props: TemplatePersistencePanelProps) {
           <button className="secondary-button" type="button" disabled={!persistedTemplate || !hasConfiguration || isBusy} onClick={onUpdate}>
             Update
           </button>
-          <button className="secondary-button" type="button" disabled={!persistedTemplate || hasUnsavedChanges || isBusy} onClick={onClone}>
-            Clone saved
-          </button>
           <button className="secondary-button secondary-button--inline" type="button" disabled={!persistedTemplate || isBusy} onClick={onDetach}>
             Work locally
           </button>
         </div>
 
         {hasUnsavedChanges && persistedTemplate && (
-          <p className="validation-message">Update the saved template before cloning if you want the clone to include current edits.</p>
+          <p className="validation-message">Current edits are local only until you press Update.</p>
         )}
         {statusMessage && <p className="template-feedback">{statusMessage}</p>}
         {errorMessage && <p className="validation-message">{errorMessage}</p>}

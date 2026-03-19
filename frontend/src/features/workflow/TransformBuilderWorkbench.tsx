@@ -1,5 +1,6 @@
 import { ChangeEvent, useEffect, useId, useMemo, useState } from "react";
 import { ChartMappingEditor, ChartPreviewCard, buildChartPreview, sanitizeChartMapping } from "../charts";
+import { BackendHealthResponse, BackendMetaResponse, createBackendApiClient } from "../backend";
 import { useDatasetUpload } from "../dataset";
 import { DatasetField, DatasetScalar, NormalizedDataset } from "../dataset/types";
 import { createTemplateApiClient, createTemplateConfigurationFromDataset, serializeTemplateConfiguration, TemplateApiError } from "../template-contract";
@@ -63,7 +64,13 @@ export function TransformBuilderWorkbench() {
   const [templateStatusMessage, setTemplateStatusMessage] = useState<string | null>(null);
   const [templateError, setTemplateError] = useState<string | null>(null);
   const [routeTemplateId, setRouteTemplateId] = useState<string | null>(() => typeof window === "undefined" ? null : getTemplateIdFromPath(window.location.pathname));
-  const apiClient = useMemo(() => createTemplateApiClient({ baseUrl: import.meta.env.VITE_API_BASE_URL }), []);
+  const backendBaseUrl = import.meta.env.VITE_BACKEND_BASE_URL ?? import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
+  const apiClient = useMemo(() => createTemplateApiClient({ baseUrl: backendBaseUrl }), [backendBaseUrl]);
+  const backendApiClient = useMemo(() => createBackendApiClient({ baseUrl: backendBaseUrl }), [backendBaseUrl]);
+  const [backendRequestState, setBackendRequestState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [backendHealth, setBackendHealth] = useState<BackendHealthResponse | null>(null);
+  const [backendMeta, setBackendMeta] = useState<BackendMetaResponse | null>(null);
+  const [backendError, setBackendError] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -102,6 +109,42 @@ export function TransformBuilderWorkbench() {
       return createTemplateConfigurationFromDataset(dataset);
     });
   }, [dataset, persistedTemplate, routeTemplateId]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    setBackendRequestState("loading");
+    setBackendError(null);
+
+    void Promise.allSettled([backendApiClient.health(), backendApiClient.meta()]).then((results) => {
+      if (!isActive) {
+        return;
+      }
+
+      const [healthResult, metaResult] = results;
+
+      if (healthResult.status === "fulfilled") {
+        setBackendHealth(healthResult.value);
+      }
+
+      if (metaResult.status === "fulfilled") {
+        setBackendMeta(metaResult.value);
+      }
+
+      if (healthResult.status === "rejected" && metaResult.status === "rejected") {
+        const nextError = healthResult.reason instanceof Error ? healthResult.reason.message : metaResult.reason instanceof Error ? metaResult.reason.message : "Backend connection failed.";
+        setBackendRequestState("error");
+        setBackendError(nextError);
+        return;
+      }
+
+      setBackendRequestState("ready");
+    });
+
+    return () => {
+      isActive = false;
+    };
+  }, [backendApiClient]);
 
   useEffect(() => {
     let isActive = true;
@@ -327,29 +370,6 @@ export function TransformBuilderWorkbench() {
     }
   }
 
-  async function handleCloneTemplate() {
-    if (!persistedTemplate) {
-      return;
-    }
-
-    setTemplateRequestState("saving");
-    setTemplateError(null);
-    setTemplateStatusMessage("Cloning saved template...");
-
-    try {
-      const template = await apiClient.clone(persistedTemplate.id, {
-        name: templateName.trim() || undefined,
-        description: normalizeTemplateDescription(templateDescription),
-      });
-      applyLoadedTemplate(template, "Template cloned. The new copy now has its own ULID.");
-      syncRoute(template.id);
-    } catch (cloneError) {
-      setTemplateRequestState("error");
-      setTemplateStatusMessage(null);
-      setTemplateError(getTemplateErrorMessage(cloneError));
-    }
-  }
-
   function handleDetachTemplate() {
     setPersistedTemplate(null);
     setTemplateRequestState("idle");
@@ -480,10 +500,13 @@ export function TransformBuilderWorkbench() {
           <p>{getStatusBody(status, fileName, dataset?.source.rowCount ?? 0, configuration?.transforms.length ?? 0)}</p>
           <div className="status-chip-list">
             <span className={`status-chip status-chip--${status}`}>{status}</span>
+            <span className={`status-chip status-chip--${backendRequestState === "error" ? "error" : backendRequestState === "loading" ? "loading" : backendRequestState === "ready" ? "ready" : "neutral"}`}>
+              {backendRequestState === "ready" ? "Backend connected" : backendRequestState === "loading" ? "Checking backend" : backendRequestState === "error" ? "Backend offline" : "Backend idle"}
+            </span>
             <span className="status-chip status-chip--neutral">Transform builder</span>
             <span className="status-chip status-chip--neutral">Chart mapping</span>
-            <span className="status-chip status-chip--neutral">Live preview</span>
           </div>
+          <p className="hero__backend-note">{getBackendStatusMessage(backendRequestState, backendHealth, backendMeta, backendError, backendBaseUrl)}</p>
         </aside>
       </header>
 
@@ -503,7 +526,6 @@ export function TransformBuilderWorkbench() {
             onDescriptionChange={setTemplateDescription}
             onCreate={() => void handleCreateTemplate()}
             onUpdate={() => void handleUpdateTemplate()}
-            onClone={() => void handleCloneTemplate()}
             onDetach={handleDetachTemplate}
           />
         </section>
@@ -1247,6 +1269,31 @@ function serializeChartMapping(chart: ChartMapping): string {
   return JSON.stringify(chart);
 }
 
+function getBackendStatusMessage(
+  requestState: "idle" | "loading" | "ready" | "error",
+  health: BackendHealthResponse | null,
+  meta: BackendMetaResponse | null,
+  error: string | null,
+  backendBaseUrl: string | undefined,
+): string {
+  if (requestState === "loading") {
+    return `Checking backend at ${backendBaseUrl ?? window.location.origin}...`;
+  }
+
+  if (requestState === "error") {
+    return error ?? "Backend connection failed.";
+  }
+
+  if (requestState === "ready") {
+    const service = health?.service ?? meta?.service ?? meta?.application ?? "backend";
+    const version = health?.version ?? meta?.version;
+    const mode = health?.mode ?? meta?.mode;
+    return [service, version ? `v${version}` : null, mode].filter(Boolean).join(" | ");
+  }
+
+  return "Backend status has not been checked yet.";
+}
+
 function getTemplateErrorMessage(error: unknown): string {
   if (error instanceof TemplateApiError) {
     return `Template API request failed with status ${error.status}.`;
@@ -1254,6 +1301,8 @@ function getTemplateErrorMessage(error: unknown): string {
 
   return error instanceof Error ? error.message : "Template request failed.";
 }
+
+
 
 
 

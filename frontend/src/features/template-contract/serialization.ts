@@ -1,7 +1,6 @@
 import {
   AggregateDefinition,
   ChartMapping,
-  CloneTemplateRequest,
   CreateTemplateRequest,
   FieldRenameMapping,
   FilterRule,
@@ -41,19 +40,6 @@ export function serializeUpdateTemplateRequest(request: UpdateTemplateRequest): 
 export function parseUpdateTemplateRequest(input: string | unknown): UpdateTemplateRequest {
   const value = parseUnknownInput(input, "update template request");
   return readTemplateDraft(value, "update template request");
-}
-
-export function serializeCloneTemplateRequest(request: CloneTemplateRequest): string {
-  return JSON.stringify(request);
-}
-
-export function parseCloneTemplateRequest(input: string | unknown): CloneTemplateRequest {
-  const value = parseUnknownInput(input, "clone template request");
-
-  return {
-    name: readOptionalString(value.name, "clone template name"),
-    description: readOptionalNullableString(value.description, "clone template description"),
-  };
 }
 
 export function parseTemplateResponseEnvelope(input: string | unknown): TemplateResponseEnvelope {
@@ -272,6 +258,16 @@ function readFieldRenameMappings(value: unknown, stepIndex: number): FieldRename
   });
 }
 
+function readSchemaVersion(value: unknown): typeof TEMPLATE_SCHEMA_VERSION {
+  const schemaVersion = Number(value);
+
+  if (schemaVersion !== TEMPLATE_SCHEMA_VERSION) {
+    throw new Error(`Unsupported template schema version: ${value}`);
+  }
+
+  return TEMPLATE_SCHEMA_VERSION;
+}
+
 function readTemplateFieldKind(value: unknown, label: string): TemplateFieldKind {
   const kind = readString(value, label);
 
@@ -282,16 +278,12 @@ function readTemplateFieldKind(value: unknown, label: string): TemplateFieldKind
   return kind;
 }
 
-function readSchemaVersion(value: unknown): typeof TEMPLATE_SCHEMA_VERSION {
-  if (value !== TEMPLATE_SCHEMA_VERSION) {
-    throw new Error(`Unsupported template schema version: ${String(value)}`);
-  }
-
-  return TEMPLATE_SCHEMA_VERSION;
+function isChartType(value: string): value is TemplateChartType {
+  return value === "bar" || value === "line" || value === "pie";
 }
 
 function readRecord(value: unknown, label: string): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error(`${label} must be an object.`);
   }
 
@@ -304,10 +296,6 @@ function readArray(value: unknown, label: string): unknown[] {
   }
 
   return value;
-}
-
-function readStringArray(value: unknown, label: string): string[] {
-  return readArray(value, label).map((entry, index) => readString(entry, `${label}[${index}]`));
 }
 
 function readString(value: unknown, label: string): string {
@@ -327,7 +315,7 @@ function readOptionalString(value: unknown, label: string): string | undefined {
 }
 
 function readNullableString(value: unknown, label: string): string | null {
-  if (value === null) {
+  if (value === null || value === undefined) {
     return null;
   }
 
@@ -335,11 +323,11 @@ function readNullableString(value: unknown, label: string): string | null {
 }
 
 function readOptionalNullableString(value: unknown, label: string): string | null | undefined {
-  if (value === undefined || value === null) {
-    return value as null | undefined;
+  if (value === undefined) {
+    return undefined;
   }
 
-  return readString(value, label);
+  return readNullableString(value, label);
 }
 
 function readBoolean(value: unknown, label: string): boolean {
@@ -350,6 +338,6 @@ function readBoolean(value: unknown, label: string): boolean {
   return value;
 }
 
-function isChartType(value: string): value is TemplateChartType {
-  return value === "bar" || value === "line" || value === "pie";
+function readStringArray(value: unknown, label: string): string[] {
+  return readArray(value, label).map((entry, index) => readString(entry, `${label}[${index}]`));
 }

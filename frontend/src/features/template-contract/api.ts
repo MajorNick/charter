@@ -1,5 +1,4 @@
 import {
-  CloneTemplateRequest,
   CreateTemplateRequest,
   PersistedTemplate,
   TemplateResponseEnvelope,
@@ -7,7 +6,6 @@ import {
 } from "./types";
 import {
   parseTemplateResponseEnvelope,
-  serializeCloneTemplateRequest,
   serializeCreateTemplateRequest,
   serializeUpdateTemplateRequest,
 } from "./serialization";
@@ -32,10 +30,6 @@ export function buildTemplateCollectionPath(): string {
 
 export function buildTemplateByIdPath(templateId: string): string {
   return `${TEMPLATE_API_BASE_PATH}/${encodeURIComponent(templateId)}`;
-}
-
-export function buildTemplateClonePath(templateId: string): string {
-  return `${buildTemplateByIdPath(templateId)}/clone`;
 }
 
 export function createTemplateApiClient(options: TemplateApiClientOptions = {}) {
@@ -67,17 +61,6 @@ export function createTemplateApiClient(options: TemplateApiClientOptions = {}) 
           "Content-Type": "application/json",
         },
         body: serializeUpdateTemplateRequest(request),
-      });
-
-      return response.template;
-    },
-    async clone(templateId: string, request: CloneTemplateRequest = {}): Promise<PersistedTemplate> {
-      const response = await requestEnvelope(fetchImplementation, resolveUrl(options.baseUrl, buildTemplateClonePath(templateId)), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: serializeCloneTemplateRequest(request),
       });
 
       return response.template;
