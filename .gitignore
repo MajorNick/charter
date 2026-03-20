@@ -17,3 +17,6 @@ backend/build/
 backend/.gradle/
 backend/.idea/
 .idea
+
+package-lock.json
+frontend/package-lock.json
