@@ -368,11 +368,15 @@ async function exportChartPreviewAsPng(preview: ChartPreviewResult): Promise<voi
 }
 
 function buildChartExportSvg(preview: ChartPreviewResult): string {
-  const body = preview.chartType === "bar"
-    ? buildBarChartSvg(preview)
-    : preview.chartType === "line"
-      ? buildLineChartSvg(preview)
-      : buildPieChartSvg(preview);
+  let body: string;
+
+  if (preview.chartType === "bar") {
+    body = buildBarChartSvg(preview);
+  } else if (preview.chartType === "line") {
+    body = buildLineChartSvg(preview);
+  } else {
+    body = buildPieChartSvg(preview as PieChartPreviewResult);
+  }
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-label="${escapeXml(preview.title)}">
@@ -489,7 +493,7 @@ function buildPieChartSvg(preview: PieChartPreviewResult): string {
   const legend = preview.slices.map((slice, index) => `
     <rect x="560" y="${210 + index * 44}" width="14" height="14" rx="7" fill="${slice.color}" />
     <text x="586" y="${222 + index * 44}" font-family="Segoe UI, Arial, sans-serif" font-size="15" fill="#111a2c">${escapeXml(slice.label)}</text>
-    <text x="1048" y="${222 + index * 44}" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="14" fill="#5f6b7d">${escapeXml(formatMetric(slice.value))} · ${Math.round(slice.percent * 100)}%</text>`).join("");
+    <text x="1048" y="${222 + index * 44}" text-anchor="end" font-family="Segoe UI, Arial, sans-serif" font-size="14" fill="#5f6b7d">${escapeXml(formatMetric(slice.value))} ï¿½ ${Math.round(slice.percent * 100)}%</text>`).join("");
 
   return `
     <circle cx="${centerX}" cy="${centerY}" r="${radius}" fill="#f3eee4" />
@@ -538,4 +542,5 @@ function downloadUrl(url: string, fileName: string): void {
   link.download = fileName;
   link.click();
 }
+
 
