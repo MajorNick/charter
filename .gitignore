@@ -16,3 +16,4 @@ TASKS.md
 backend/build/
 backend/.gradle/
 backend/.idea/
+.idea

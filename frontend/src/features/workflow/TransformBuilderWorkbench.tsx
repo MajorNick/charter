@@ -1,4 +1,4 @@
-import { ChangeEvent, useEffect, useId, useMemo, useState } from "react";
+import { ChangeEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import { ChartMappingEditor, ChartPreviewCard, buildChartPreview, sanitizeChartMapping } from "../charts";
 import { BackendHealthResponse, BackendMetaResponse, createBackendApiClient } from "../backend";
 import { useDatasetUpload } from "../dataset";
@@ -51,12 +51,15 @@ const filterOperators: Array<{ value: FilterOperator; label: string }> = [
 
 const aggregateOperations: AggregateDefinition["operation"][] = ["count", "sum", "average", "min", "max"];
 const stepTypes: TransformStep["type"][] = ["filter", "group", "sort", "calculate", "select", "rename"];
+type BuilderStage = "data" | "transforms" | "chart" | "share";
 
 export function TransformBuilderWorkbench() {
   const uploadInputId = useId();
   const { status, dataset, error, fileName, loadFile, reset } = useDatasetUpload();
   const [configuration, setConfiguration] = useState<TemplateConfiguration | null>(null);
   const [nextStepType, setNextStepType] = useState<TransformStep["type"]>("filter");
+  const [activeStage, setActiveStage] = useState<BuilderStage>("data");
+  const [isOutputExamplesOpen, setIsOutputExamplesOpen] = useState(false);
   const [persistedTemplate, setPersistedTemplate] = useState<PersistedTemplate | null>(null);
   const [templateName, setTemplateName] = useState("Template draft");
   const [templateDescription, setTemplateDescription] = useState("");
@@ -69,6 +72,7 @@ export function TransformBuilderWorkbench() {
   const backendApiClient = useMemo(() => createBackendApiClient({ baseUrl: backendBaseUrl }), [backendBaseUrl]);
   const [backendRequestState, setBackendRequestState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [backendHealth, setBackendHealth] = useState<BackendHealthResponse | null>(null);
+  const hadDatasetRef = useRef(false);
   const [backendMeta, setBackendMeta] = useState<BackendMetaResponse | null>(null);
   const [backendError, setBackendError] = useState<string | null>(null);
 
@@ -281,6 +285,53 @@ export function TransformBuilderWorkbench() {
   }, [configuration, persistedTemplate, templateDescription, templateName]);
 
   const shareUrl = persistedTemplate ? getTemplateShareUrl(persistedTemplate.id) : null;
+  const stages = useMemo(
+    () =>
+      [
+        {
+          id: "data" as const,
+          label: "Data",
+          title: "Upload source",
+          description: dataset ? `${dataset.source.rowCount} rows loaded from ${dataset.source.kind.toUpperCase()}.` : "Upload a CSV or JSON file.",
+          tone: status === "error" ? "error" : dataset ? "ready" : "idle",
+        },
+        {
+          id: "transforms" as const,
+          label: "Transforms",
+          title: "Shape dataset",
+          description: configuration ? `${configuration.transforms.length} configured step${configuration.transforms.length === 1 ? "" : "s"}.` : "Build a transformation pipeline.",
+          tone: previewState.error ? "error" : configuration?.transforms.length ? "ready" : "idle",
+        },
+        {
+          id: "chart" as const,
+          label: "Chart",
+          title: "Map visual",
+          description: configuration ? `${formatStepTypeForStage(configuration.chart.chartType)} preview is bound to output fields.` : "Map the transformed dataset to a chart.",
+          tone: chartPreview?.issue ? "error" : configuration ? "ready" : "idle",
+        },
+        {
+          id: "share" as const,
+          label: "Share",
+          title: "Persist config",
+          description: persistedTemplate ? "Share link is ready." : "Save or update the workflow template.",
+          tone: templateRequestState === "error" ? "error" : persistedTemplate ? "ready" : "idle",
+        },
+      ] satisfies Array<{ id: BuilderStage; label: string; title: string; description: string; tone: "idle" | "ready" | "error" }>,
+    [chartPreview?.issue, configuration, dataset, persistedTemplate, previewState.error, status, templateRequestState],
+  );
+
+  useEffect(() => {
+    if (!dataset) {
+      hadDatasetRef.current = false;
+      setActiveStage("data");
+      return;
+    }
+
+    if (!hadDatasetRef.current) {
+      hadDatasetRef.current = true;
+      setActiveStage("transforms");
+    }
+  }, [dataset]);
 
   function handleInputChange(event: ChangeEvent<HTMLInputElement>) {
     const nextFile = event.target.files?.[0] ?? null;
@@ -288,6 +339,15 @@ export function TransformBuilderWorkbench() {
     event.target.value = "";
   }
 
+  function handleExportCsv() {
+    const exportDataset = previewState.dataset ?? dataset;
+
+    if (!exportDataset) {
+      return;
+    }
+
+    downloadDatasetAsCsv(exportDataset, fileName);
+  }
   function handleReset() {
     reset();
 
@@ -471,266 +531,368 @@ export function TransformBuilderWorkbench() {
 
   return (
     <div className="app-shell">
-      <header className="hero">
-        <div className="hero__copy">
-          <p className="eyebrow">T6 + T7 / Frontend Workflow Lane</p>
-          <h1>Build the Phase 1 pipeline and map it onto a live chart.</h1>
-          <p className="hero__summary">
-            Build a chart-ready dataset in one place: upload data, shape it step by step, inspect intermediate results,
-            and bind the final output to a live preview without losing the underlying template contract.
-          </p>
-          <div className="hero__stat-row">
-            <article className="hero-stat">
-              <span>Source rows</span>
-              <strong>{dataset?.source.rowCount ?? 0}</strong>
-            </article>
-            <article className="hero-stat">
-              <span>Transform steps</span>
-              <strong>{configuration?.transforms.length ?? 0}</strong>
-            </article>
-            <article className="hero-stat">
-              <span>Output fields</span>
-              <strong>{previewState.dataset?.fields.length ?? dataset?.fields.length ?? 0}</strong>
-            </article>
+      <header className="builder-topbar">
+        <div className="builder-topbar__identity">
+          <p className="eyebrow">Charter Builder</p>
+          <div className="builder-topbar__title-row">
+            <h1>Build chart-ready views</h1>
+            <span className={"status-chip status-chip--" + status}>{getStatusHeading(status, fileName)}</span>
           </div>
+          <p className="builder-topbar__summary">Upload data, shape the pipeline, map a chart, and share the configuration.</p>
         </div>
-        <aside className="hero__panel hero__panel--stacked">
-          <span className="hero__label">Current state</span>
-          <strong>{getStatusHeading(status, fileName)}</strong>
-          <p>{getStatusBody(status, fileName, dataset?.source.rowCount ?? 0, configuration?.transforms.length ?? 0)}</p>
+
+        <div className="builder-topbar__metrics">
+          <article className="builder-topbar__metric">
+            <span>Rows</span>
+            <strong>{dataset?.source.rowCount ?? 0}</strong>
+          </article>
+          <article className="builder-topbar__metric">
+            <span>Steps</span>
+            <strong>{configuration?.transforms.length ?? 0}</strong>
+          </article>
+          <article className="builder-topbar__metric">
+            <span>Fields</span>
+            <strong>{previewState.dataset?.fields.length ?? dataset?.fields.length ?? 0}</strong>
+          </article>
+        </div>
+
+        <div className="builder-topbar__status">
           <div className="status-chip-list">
-            <span className={`status-chip status-chip--${status}`}>{status}</span>
-            <span className={`status-chip status-chip--${backendRequestState === "error" ? "error" : backendRequestState === "loading" ? "loading" : backendRequestState === "ready" ? "ready" : "neutral"}`}>
+            <span className={"status-chip status-chip--" + (backendRequestState === "error" ? "error" : backendRequestState === "loading" ? "loading" : backendRequestState === "ready" ? "ready" : "neutral")}>
               {backendRequestState === "ready" ? "Backend connected" : backendRequestState === "loading" ? "Checking backend" : backendRequestState === "error" ? "Backend offline" : "Backend idle"}
             </span>
-            <span className="status-chip status-chip--neutral">Transform builder</span>
-            <span className="status-chip status-chip--neutral">Chart mapping</span>
+            <span className={"status-chip status-chip--" + (previewState.error ? "error" : configuration?.transforms.length ? "ready" : "neutral")}>
+              {previewState.error ? "Preview issue" : configuration?.transforms.length ? "Pipeline active" : "Pipeline idle"}
+            </span>
           </div>
-          <p className="hero__backend-note">{getBackendStatusMessage(backendRequestState, backendHealth, backendMeta, backendError, backendBaseUrl)}</p>
-        </aside>
+          <p className="builder-topbar__note">{getBackendStatusMessage(backendRequestState, backendHealth, backendMeta, backendError, backendBaseUrl)}</p>
+        </div>
       </header>
 
-      <main className="content-grid">
-        <section className="panel panel--wide">
-          <TemplatePersistencePanel
-            name={templateName}
-            description={templateDescription}
-            persistedTemplate={persistedTemplate}
-            requestState={templateRequestState}
-            statusMessage={templateStatusMessage}
-            errorMessage={templateError}
-            shareUrl={shareUrl}
-            hasConfiguration={configuration !== null}
-            hasUnsavedChanges={hasUnsavedTemplateChanges}
-            onNameChange={setTemplateName}
-            onDescriptionChange={setTemplateDescription}
-            onCreate={() => void handleCreateTemplate()}
-            onUpdate={() => void handleUpdateTemplate()}
-            onDetach={handleDetachTemplate}
-          />
-        </section>
-        <section className="panel panel--wide">
-          <div className="panel__header">
+      <main className="builder-layout builder-layout--focused">
+        <aside className="builder-sidebar">
+          <div className="panel builder-sidebar__panel">
             <div className="section-heading">
-              <p className="section-kicker">Upload</p>
-              <h2>Load a local source file.</h2>
+              <p className="section-kicker">Flow</p>
+              <h2>Build sequence</h2>
             </div>
-            {(dataset || error) && (
-              <button className="secondary-button" type="button" onClick={handleReset}>
-                Clear state
-              </button>
-            )}
-          </div>
-
-          <div className="upload-grid">
-            <label className="upload-card" htmlFor={uploadInputId}>
-              <input
-                id={uploadInputId}
-                className="sr-only"
-                type="file"
-                accept=".csv,.json,text/csv,application/json"
-                onChange={handleInputChange}
-              />
-              <span className="upload-card__eyebrow">Local source</span>
-              <strong>Choose a .csv or .json file</strong>
-              <p>
-                Files stay local to the browser. Once loaded, the builder configures a persisted template shape rather
-                than storing raw rows in backend payloads.
-              </p>
-              <span className="upload-card__button">Select file</span>
-            </label>
-
-            <div className="upload-status">
-              <p className="upload-status__label">Pipeline output</p>
-              {error ? (
-                <p className="upload-status__message upload-status__message--error">{error}</p>
-              ) : previewState.error ? (
-                <p className="upload-status__message upload-status__message--error">{previewState.error}</p>
-              ) : (
-                <p className="upload-status__message">{getStatusMessage(status, fileName, configuration?.transforms.length ?? 0)}</p>
-              )}
-
-              <ul className="detail-list">
-                <li>Every step uses the persisted TransformStep contract from T4.</li>
-                <li>Preview runs through the shared T5 execution engine after each edit.</li>
-                <li>Chart mapping binds against transformed output fields, not the raw upload schema.</li>
-              </ul>
-            </div>
-          </div>
-        </section>
-
-        <section className="panel">
-          <div className="section-heading">
-            <p className="section-kicker">Workflow Contract</p>
-            <h2>Builder rules for downstream tasks.</h2>
-          </div>
-          <div className="note-grid">
-            {contractNotes.map((note) => (
-              <article className="note-card" key={note.title}>
-                <h3>{note.title}</h3>
-                <p>{note.description}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="panel">
-          <div className="section-heading">
-            <p className="section-kicker">Pipeline Summary</p>
-            <h2>Current authoring state.</h2>
-          </div>
-          {dataset && configuration ? (
-            <div className="summary-grid">
-              <SummaryCard label="Source rows" value={dataset.source.rowCount.toString()} />
-              <SummaryCard label="Step count" value={configuration.transforms.length.toString()} />
-              <SummaryCard label="Preview rows" value={(previewState.dataset?.rows.length ?? 0).toString()} />
-              <SummaryCard label="Chart type" value={configuration.chart.chartType} />
-            </div>
-          ) : (
-            <EmptyState title="Builder is waiting for data." description="Upload a file to start composing transform steps and see the preview state." />
-          )}
-        </section>
-
-        <section className="panel panel--wide">
-          <div className="panel__header panel__header--builder">
-            <div className="section-heading">
-              <p className="section-kicker">Transform Builder</p>
-              <h2>Compose the Phase 1 pipeline.</h2>
-            </div>
-            {configuration && (
-              <div className="builder-toolbar">
-                <label className="form-field builder-toolbar__field">
-                  <span>Next step type</span>
-                  <select
-                    className="field-select"
-                    value={nextStepType}
-                    onChange={(event) => setNextStepType(event.target.value as TransformStep["type"])}
-                  >
-                    {stepTypes.map((stepType) => (
-                      <option key={stepType} value={stepType}>
-                        {formatStepType(stepType)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button className="secondary-button builder-toolbar__action" type="button" onClick={() => addTransformStep(nextStepType)}>
-                  Add selected step
+            <div className="builder-stage-list">
+              {stages.map((stage, index) => (
+                <button
+                  key={stage.id}
+                  className={"builder-stage-card" + (activeStage === stage.id ? " builder-stage-card--active" : "")}
+                  type="button"
+                  onClick={() => setActiveStage(stage.id)}
+                >
+                  <span className="builder-stage-card__index">0{index + 1}</span>
+                  <div className="builder-stage-card__body">
+                    <div className="builder-stage-card__header">
+                      <strong>{stage.label}</strong>
+                      <span className={"status-chip status-chip--" + stage.tone}>{stage.tone}</span>
+                    </div>
+                    <p>{stage.title}</p>
+                    <span>{stage.description}</span>
+                  </div>
                 </button>
-                <p className="builder-toolbar__hint">This selector only affects the next step you add. Existing steps keep their current type.</p>
-              </div>
-            )}
+              ))}
+            </div>
           </div>
-          {dataset && configuration ? (
-            configuration.transforms.length > 0 ? (
-              <div className="step-list">
-                {configuration.transforms.map((step, index) => (
-                  <TransformStepEditor
-                    key={step.id}
-                    availableFields={stepAvailableFields[index] ?? dataset.fields}
-                    index={index}
-                    isFirst={index === 0}
-                    isLast={index === configuration.transforms.length - 1}
-                    previewState={stepPreviewStates[index] ?? { dataset: null, error: null }}
-                    step={step}
-                    onChange={(nextStep) => updateTransformStep(step.id, nextStep)}
-                    onMoveUp={() => moveTransformStep(step.id, -1)}
-                    onMoveDown={() => moveTransformStep(step.id, 1)}
-                    onRemove={() => removeTransformStep(step.id)}
+        </aside>
+
+        <section className="builder-main builder-main--focused">
+          {activeStage === "data" && (
+            <div className="builder-stage-layout">
+              <div className="builder-stage-primary">
+                <section className="panel panel--heroic">
+                  <div className="panel__header">
+                    <div className="section-heading">
+                      <p className="section-kicker">Data Intake</p>
+                      <h2>Load a browser-local source file.</h2>
+                    </div>
+                    {(dataset || error) && (
+                      <button className="secondary-button" type="button" onClick={handleReset}>
+                        Clear state
+                      </button>
+                    )}
+                  </div>
+                  <div className="upload-grid upload-grid--builder">
+                    <label className="upload-card upload-card--hero" htmlFor={uploadInputId}>
+                      <input
+                        id={uploadInputId}
+                        className="sr-only"
+                        type="file"
+                        accept=".csv,.json,text/csv,application/json"
+                        onChange={handleInputChange}
+                      />
+                      <span className="upload-card__eyebrow">Local source</span>
+                      <strong>Choose a .csv or .json file</strong>
+                      <p>Files stay in the browser. Charter only stores the configuration contract, never the uploaded rows.</p>
+                      <span className="upload-card__button">{status === "loading" ? "Parsing file..." : "Select file"}</span>
+                    </label>
+
+                    <div className="upload-status upload-status--builder">
+                      <p className="upload-status__label">Ingestion status</p>
+                      {error ? (
+                        <p className="upload-status__message upload-status__message--error">{error}</p>
+                      ) : previewState.error ? (
+                        <p className="upload-status__message upload-status__message--error">{previewState.error}</p>
+                      ) : (
+                        <p className="upload-status__message">{getStatusMessage(status, fileName, configuration?.transforms.length ?? 0)}</p>
+                      )}
+
+                      <ul className="detail-list">
+                        <li>CSV headers become field names and are deduplicated when needed.</li>
+                        <li>Flat JSON arrays are normalized into the same row contract as CSV uploads.</li>
+                        <li>Every downstream preview is driven from the current pipeline output, not a separate data store.</li>
+                      </ul>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="panel">
+                  <div className="section-heading">
+                    <p className="section-kicker">Source Schema</p>
+                    <h2>Validate fields before modeling the chart.</h2>
+                  </div>
+                  {dataset ? (
+                    <SchemaPreview dataset={dataset} />
+                  ) : (
+                    <EmptyState title="Schema preview is empty." description="Load a file to inspect inferred field kinds and sample values." />
+                  )}
+                </section>
+              </div>
+
+              <aside className="builder-stage-secondary">
+                <section className="panel">
+                  <div className="section-heading">
+                    <p className="section-kicker">Dataset Summary</p>
+                    <h2>Imported shape at a glance.</h2>
+                  </div>
+                  {dataset ? (
+                    <div className="summary-grid summary-grid--sidebar">
+                      <SummaryCard label="Source type" value={dataset.source.kind.toUpperCase()} />
+                      <SummaryCard label="Rows" value={dataset.source.rowCount.toString()} />
+                      <SummaryCard label="Fields" value={dataset.fields.length.toString()} />
+                      <SummaryCard label="Sample rows" value={dataset.sampleRows.length.toString()} />
+                    </div>
+                  ) : (
+                    <EmptyState title="No dataset loaded yet." description="Upload a file to generate a normalized schema and sample rows." />
+                  )}
+                </section>
+
+                <section className="panel">
+                  <div className="section-heading">
+                    <p className="section-kicker">Principles</p>
+                    <h2>Guardrails</h2>
+                  </div>
+                  <div className="note-grid note-grid--stacked">
+                    {contractNotes.map((note) => (
+                      <article className="note-card" key={note.title}>
+                        <h3>{note.title}</h3>
+                        <p>{note.description}</p>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              </aside>
+            </div>
+          )}
+
+          {activeStage === "transforms" && (
+            <div className="builder-stage-layout">
+              <div className="builder-stage-primary">
+                <section className="panel panel--heroic">
+                  <div className="panel__header panel__header--builder">
+                    <div className="section-heading">
+                      <p className="section-kicker">Transform Builder</p>
+                      <h2>Compose the pipeline as a sequence of readable steps.</h2>
+                    </div>
+                    {configuration && (
+                      <div className="builder-toolbar">
+                        <label className="form-field builder-toolbar__field">
+                          <span>Next step type</span>
+                          <select
+                            className="field-select"
+                            value={nextStepType}
+                            onChange={(event) => setNextStepType(event.target.value as TransformStep["type"])}
+                          >
+                            {stepTypes.map((stepType) => (
+                              <option key={stepType} value={stepType}>
+                                {formatStepType(stepType)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <button className="secondary-button builder-toolbar__action" type="button" onClick={() => addTransformStep(nextStepType)}>
+                          Add step
+                        </button>
+                        <p className="builder-toolbar__hint">Each card is one pipeline instruction. Reorder cards to change execution order.</p>
+                      </div>
+                    )}
+                  </div>
+                  {dataset && configuration ? (
+                    configuration.transforms.length > 0 ? (
+                      <div className="step-list">
+                        {configuration.transforms.map((step, index) => (
+                          <TransformStepEditor
+                            key={step.id}
+                            availableFields={stepAvailableFields[index] ?? dataset.fields}
+                            index={index}
+                            isFirst={index === 0}
+                            isLast={index === configuration.transforms.length - 1}
+                            previewState={stepPreviewStates[index] ?? { dataset: null, error: null }}
+                            step={step}
+                            onChange={(nextStep) => updateTransformStep(step.id, nextStep)}
+                            onMoveUp={() => moveTransformStep(step.id, -1)}
+                            onMoveDown={() => moveTransformStep(step.id, 1)}
+                            onRemove={() => removeTransformStep(step.id)}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <EmptyState title="No transform steps yet." description="Add a filter, group, sort, calculate, select, or rename step to start shaping the dataset." />
+                    )
+                  ) : (
+                    <EmptyState title="Transform builder is unavailable." description="Upload data first so the step editors can bind against real field names." />
+                  )}
+                </section>
+              </div>
+
+              <aside className="builder-stage-secondary">
+                <section className="panel panel--compact-actions">
+                  <div className="section-heading">
+                    <p className="section-kicker">Output Preview</p>
+                    <h2>Inspect transformed rows on demand.</h2>
+                  </div>
+                  <p className="panel__supporting-copy">Open a dedicated preview overlay when you need to validate row output. This keeps wide datasets from stretching the workbench.</p>
+                  <div className="panel__action-row">
+                    <button className="secondary-button secondary-button--inline" type="button" onClick={() => setIsOutputExamplesOpen(true)}>
+                      Open row preview
+                    </button>
+                    <button className="secondary-button secondary-button--inline" type="button" onClick={handleExportCsv} disabled={!dataset && !previewState.dataset}>
+                      Export CSV
+                    </button>
+                  </div>
+                </section>
+              </aside>
+            </div>
+          )}
+
+          {activeStage === "chart" && (
+            <div className="builder-stage-layout">
+              <div className="builder-stage-primary">
+                <section className="panel panel--heroic">
+                  <div className="section-heading">
+                    <p className="section-kicker">Chart Mapping</p>
+                    <h2>Bind the transformed dataset to a supported visual.</h2>
+                  </div>
+                  {chartDataset && configuration ? (
+                    <ChartMappingEditor dataset={chartDataset} chart={configuration.chart} onChange={updateChartMapping} />
+                  ) : (
+                    <EmptyState title="Chart mapping is unavailable." description="Upload data first so the chart controls can bind against the current output schema." />
+                  )}
+                </section>
+              </div>
+
+              <aside className="builder-stage-secondary">
+                <section className="panel">
+                  <div className="section-heading">
+                    <p className="section-kicker">Live Preview</p>
+                    <h2>Current chart output</h2>
+                  </div>
+                  <ChartPreviewCard preview={chartPreview} />
+                </section>
+
+                <section className="panel">
+                  <div className="section-heading">
+                    <p className="section-kicker">Preview Rows</p>
+                    <h2>Sample output used by the live chart.</h2>
+                  </div>
+                  {previewState.dataset ? (
+                    <SampleRowsPreview dataset={previewState.dataset} />
+                  ) : dataset ? (
+                    <SampleRowsPreview dataset={dataset} />
+                  ) : (
+                    <EmptyState title="No preview rows yet." description="Once data is loaded, the current pipeline output appears here." />
+                  )}
+                </section>
+              </aside>
+            </div>
+          )}
+
+          {activeStage === "share" && (
+            <div className="builder-stage-layout">
+              <div className="builder-stage-primary">
+                <section className="panel panel--heroic">
+                  <TemplatePersistencePanel
+                    name={templateName}
+                    description={templateDescription}
+                    persistedTemplate={persistedTemplate}
+                    requestState={templateRequestState}
+                    statusMessage={templateStatusMessage}
+                    errorMessage={templateError}
+                    shareUrl={shareUrl}
+                    hasConfiguration={configuration !== null}
+                    hasUnsavedChanges={hasUnsavedTemplateChanges}
+                    onNameChange={setTemplateName}
+                    onDescriptionChange={setTemplateDescription}
+                    onCreate={() => void handleCreateTemplate()}
+                    onUpdate={() => void handleUpdateTemplate()}
+                    onDetach={handleDetachTemplate}
                   />
-                ))}
+                </section>
               </div>
-            ) : (
-              <EmptyState
-                title="No transform steps yet."
-                description="Choose the next step type and add it to start building the workflow. Filter, group, sort, calculate, select, and rename are available in Phase 1."
-              />
-            )
-          ) : (
-            <EmptyState title="Transform builder is unavailable." description="Upload data first so the step editors can bind against real field names." />
+
+              <aside className="builder-stage-secondary">
+                <section className="panel">
+                  <div className="section-heading">
+                    <p className="section-kicker">Snapshot</p>
+                    <h2>Current authoring state.</h2>
+                  </div>
+                  {dataset && configuration ? (
+                    <div className="summary-grid summary-grid--sidebar">
+                      <SummaryCard label="Source rows" value={dataset.source.rowCount.toString()} />
+                      <SummaryCard label="Step count" value={configuration.transforms.length.toString()} />
+                      <SummaryCard label="Preview rows" value={(previewState.dataset?.rows.length ?? dataset.rows.length).toString()} />
+                      <SummaryCard label="Chart type" value={configuration.chart.chartType} />
+                    </div>
+                  ) : (
+                    <EmptyState title="Builder is waiting for data." description="Upload a file to activate the full workbench." />
+                  )}
+                </section>
+
+                <section className="panel">
+                  <div className="section-heading">
+                    <p className="section-kicker">Preview</p>
+                    <h2>Current chart output</h2>
+                  </div>
+                  <ChartPreviewCard preview={chartPreview} />
+                </section>
+              </aside>
+            </div>
           )}
         </section>
 
-        <section className="panel panel--wide">
-          <div className="section-heading">
-            <p className="section-kicker">Final Row Examples</p>
-            <h2>One or two rows after all transformation steps.</h2>
+        {isOutputExamplesOpen && (
+          <div className="overlay-backdrop" role="presentation" onClick={() => setIsOutputExamplesOpen(false)}>
+            <div className="overlay-dialog" role="dialog" aria-modal="true" aria-label="Output examples" onClick={(event) => event.stopPropagation()}>
+              <div className="overlay-dialog__header">
+                <div className="section-heading">
+                  <p className="section-kicker">Output Examples</p>
+                  <h2>Preview transformed rows without affecting the layout.</h2>
+                </div>
+                <button className="icon-button" type="button" onClick={() => setIsOutputExamplesOpen(false)}>Close</button>
+              </div>
+              {previewState.dataset ? (
+                <CompactRowExamples dataset={previewState.dataset} />
+              ) : dataset ? (
+                <CompactRowExamples dataset={dataset} />
+              ) : (
+                <EmptyState title="No row examples yet." description="Upload a file to see output examples after the active pipeline." />
+              )}
+            </div>
           </div>
-          {previewState.dataset ? (
-            <CompactRowExamples dataset={previewState.dataset} />
-          ) : dataset ? (
-            <CompactRowExamples dataset={dataset} />
-          ) : (
-            <EmptyState title="No row examples yet." description="Upload a file to see compact output examples after the full transform pipeline." />
-          )}
-        </section>
-
-        <section className="panel panel--wide">
-          <div className="section-heading">
-            <p className="section-kicker">Chart Mapping</p>
-            <h2>Bind the transformed dataset to a supported chart.</h2>
-          </div>
-          {chartDataset && configuration ? (
-            <ChartMappingEditor dataset={chartDataset} chart={configuration.chart} onChange={updateChartMapping} />
-          ) : (
-            <EmptyState title="Chart mapping is unavailable." description="Upload data first so the chart controls can bind against the current output schema." />
-          )}
-        </section>
-
-        <section className="panel panel--wide">
-          <div className="section-heading">
-            <p className="section-kicker">Chart Preview</p>
-            <h2>Render the current transformed output.</h2>
-          </div>
-          <ChartPreviewCard preview={chartPreview} />
-        </section>
-
-        <section className="panel panel--wide">
-          <div className="section-heading">
-            <p className="section-kicker">Preview Schema</p>
-            <h2>Current output fields after the pipeline.</h2>
-          </div>
-          {previewState.dataset ? (
-            <SchemaPreview dataset={previewState.dataset} />
-          ) : dataset ? (
-            <SchemaPreview dataset={dataset} />
-          ) : (
-            <EmptyState title="No preview schema yet." description="Upload a file and configure steps to inspect the derived output schema." />
-          )}
-        </section>
-
-        <section className="panel panel--wide">
-          <div className="section-heading">
-            <p className="section-kicker">Preview Rows</p>
-            <h2>Sample output from the current transform sequence.</h2>
-          </div>
-          {previewState.dataset ? (
-            <SampleRowsPreview dataset={previewState.dataset} />
-          ) : dataset ? (
-            <SampleRowsPreview dataset={dataset} />
-          ) : (
-            <EmptyState title="No preview rows yet." description="Once data is loaded, the current pipeline output appears here." />
-          )}
-        </section>
+        )}
       </main>
     </div>
   );
@@ -758,9 +920,12 @@ function TransformStepEditor(props: {
         <div className="step-card__title-block">
           <p className="step-card__kicker">Step {index + 1}</p>
           <h3>{step.label.trim() || formatStepType(step.type)}</h3>
-          <p className="step-card__summary">{formatStepType(step.type)} step ? {availableFields.length} available input fields</p>
+          <p className="step-card__summary">{describeStep(step, availableFields)}</p>
         </div>
         <div className="step-card__actions">
+          <span className={"status-chip status-chip--" + (validationMessage ? "error" : previewState.error ? "error" : "ready")}>
+            {validationMessage ? "Needs setup" : previewState.error ? "Preview error" : "Configured"}
+          </span>
           <button className="icon-button" type="button" disabled={isFirst} onClick={onMoveUp}>Up</button>
           <button className="icon-button" type="button" disabled={isLast} onClick={onMoveDown}>Down</button>
           <button className="icon-button icon-button--danger" type="button" onClick={onRemove}>Remove</button>
@@ -1023,27 +1188,59 @@ function StepResultPreview(props: { previewState: { dataset: NormalizedDataset |
 }
 
 function CompactRowExamples({ dataset }: { dataset: NormalizedDataset }) {
-  const rows = dataset.sampleRows.slice(0, 2);
+  const pageSize = 10;
+  const [page, setPage] = useState(1);
+  const totalRows = dataset.rows.length;
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const startIndex = (currentPage - 1) * pageSize;
+  const rows = dataset.rows.slice(startIndex, startIndex + pageSize);
+
+  useEffect(() => {
+    setPage(1);
+  }, [dataset]);
 
   if (dataset.fields.length === 0 || rows.length === 0) {
     return <EmptyState title="No row examples yet." description="The current pipeline output does not have previewable rows yet." />;
   }
 
   return (
-    <div className="compact-row-grid">
-      {rows.map((row, rowIndex) => (
-        <article className="compact-row-card" key={`compact-row-${rowIndex}`}>
-          <p className="step-card__kicker">Example {rowIndex + 1}</p>
-          <div className="compact-row-values">
-            {dataset.fields.map((field) => (
-              <div className="compact-row-item" key={`${rowIndex}-${field.key}`}>
-                <span>{field.label}</span>
-                <strong>{formatScalar(row[field.key])}</strong>
-              </div>
+    <div className="compact-preview-table-shell">
+      <div className="compact-preview-table-shell__header">
+        <span className="status-chip status-chip--neutral">{totalRows} rows</span>
+        <span className="status-chip status-chip--neutral">Page {currentPage} of {totalPages}</span>
+      </div>
+      <div className="table-scroll">
+        <table className="data-table data-table--compact-preview">
+          <thead>
+            <tr>
+              {dataset.fields.map((field) => (
+                <th key={field.key} scope="col">{field.label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, rowIndex) => (
+              <tr key={`compact-row-${startIndex + rowIndex}`}>
+                {dataset.fields.map((field) => (
+                  <td key={`${startIndex + rowIndex}-${field.key}`}>
+                    <span className={`value-chip value-chip--${getValueTone(row[field.key])}`}>
+                      {formatScalar(row[field.key])}
+                    </span>
+                  </td>
+                ))}
+              </tr>
             ))}
-          </div>
-        </article>
-      ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="pagination-bar">
+        <span className="pagination-bar__summary">Showing {startIndex + 1}-{Math.min(startIndex + rows.length, totalRows)} of {totalRows}</span>
+        <div className="pagination-bar__actions">
+          <button className="icon-button" type="button" disabled={currentPage === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Previous</button>
+          <button className="icon-button" type="button" disabled={currentPage === totalPages} onClick={() => setPage((value) => Math.min(totalPages, value + 1))}>Next</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1149,6 +1346,29 @@ function formatStepType(type: TransformStep["type"]): string {
     case "calculate": return "Calculate";
     case "select": return "Select";
     case "rename": return "Rename";
+  }
+}
+
+function formatStepTypeForStage(type: string): string {
+  return type.charAt(0).toUpperCase() + type.slice(1);
+}
+
+function describeStep(step: TransformStep, availableFields: DatasetField[]): string {
+  switch (step.type) {
+    case "filter":
+      return step.rules.length > 0
+        ? `${step.combinator.toUpperCase()} ${step.rules.length} rule${step.rules.length === 1 ? "" : "s"} across ${availableFields.length} available field${availableFields.length === 1 ? "" : "s"}.`
+        : "No filter rules configured yet.";
+    case "group":
+      return `Group by ${step.groupBy.length || 0} field${step.groupBy.length === 1 ? "" : "s"} and calculate ${step.aggregates.length} aggregate${step.aggregates.length === 1 ? "" : "s"}.`;
+    case "sort":
+      return step.rules.length > 0 ? `Sort by ${step.rules.map((rule) => `${rule.field} ${rule.direction}`).join(", ")}.` : "No sort rules configured yet.";
+    case "calculate":
+      return step.outputField.trim() ? `Create ${step.outputField} as a ${step.outputKind} expression.` : "Add an output field and expression.";
+    case "select":
+      return step.fields.length > 0 ? `Keep ${step.fields.length} output field${step.fields.length === 1 ? "" : "s"}.` : "No output fields selected yet.";
+    case "rename":
+      return step.mappings.length > 0 ? `Rename ${step.mappings.length} field${step.mappings.length === 1 ? "" : "s"} in the final output.` : "No rename mappings configured yet.";
   }
 }
 
@@ -1294,6 +1514,32 @@ function getBackendStatusMessage(
   return "Backend status has not been checked yet.";
 }
 
+function downloadDatasetAsCsv(dataset: NormalizedDataset, fileName: string | null): void {
+  const headers = dataset.fields.map((field) => field.label);
+  const rows = dataset.rows.map((row) => dataset.fields.map((field) => escapeCsvValue(row[field.key])));
+  const csv = [headers.map(escapeCsvCell).join(","), ...rows.map((values) => values.join(","))].join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const baseName = (fileName ?? "charter-output").replace(/\.[^.]+$/, "");
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  link.href = url;
+  link.download = baseName + "-output.csv";
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function escapeCsvValue(value: DatasetScalar | undefined): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  return escapeCsvCell(String(value));
+}
+
+function escapeCsvCell(value: string): string {
+  const escaped = value.replace(/"/g, '""');
+  return /[",\r\n]/.test(value) ? `"${escaped}"` : escaped;
+}
 function getTemplateErrorMessage(error: unknown): string {
   if (error instanceof TemplateApiError) {
     return `Template API request failed with status ${error.status}.`;
@@ -1301,6 +1547,7 @@ function getTemplateErrorMessage(error: unknown): string {
 
   return error instanceof Error ? error.message : "Template request failed.";
 }
+
 
 
 

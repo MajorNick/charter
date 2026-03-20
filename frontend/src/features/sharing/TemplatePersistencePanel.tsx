@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { PersistedTemplate } from "../template-contract";
 
 interface TemplatePersistencePanelProps {
@@ -36,18 +37,47 @@ export function TemplatePersistencePanel(props: TemplatePersistencePanelProps) {
   } = props;
 
   const isBusy = requestState === "loading" || requestState === "saving";
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
+
+  async function handleCopyLink() {
+    if (!shareUrl || typeof navigator === "undefined" || !navigator.clipboard) {
+      setCopyState("error");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopyState("copied");
+      window.setTimeout(() => setCopyState("idle"), 2000);
+    } catch {
+      setCopyState("error");
+    }
+  }
 
   return (
     <div className="template-persistence-grid">
-      <div className="template-session-card">
-        <div className="panel__header">
+      <div className="template-session-card template-session-card--premium">
+        <div className="panel__header template-session-card__header">
           <div className="section-heading">
             <p className="section-kicker">Template</p>
-            <h2>Persist, reload, and share the current workflow.</h2>
+            <h2>Save and share the current workflow.</h2>
           </div>
-          <span className={`status-chip status-chip--${requestState === "error" ? "error" : requestState === "loading" ? "loading" : persistedTemplate ? "ready" : "neutral"}`}>
+          <span className={"status-chip status-chip--" + (requestState === "error" ? "error" : requestState === "loading" ? "loading" : persistedTemplate ? "ready" : "neutral")}>
             {persistedTemplate ? "Persisted" : "Local draft"}
           </span>
+        </div>
+
+        <div className="template-hero-row">
+          <article className="meta-card meta-card--hero">
+            <span>Template id</span>
+            <strong>{persistedTemplate?.id ?? "Not saved yet"}</strong>
+            <p>{persistedTemplate ? "Updated " + persistedTemplate.updatedAt : "Save this draft to create a reusable share link."}</p>
+          </article>
+          <article className="meta-card meta-card--hero">
+            <span>Share link</span>
+            <strong>{shareUrl ?? "Unavailable"}</strong>
+            <p>{shareUrl ? "Recipients can open this link and upload their own compatible file." : "The share link appears after the first successful save."}</p>
+          </article>
         </div>
 
         <div className="form-grid form-grid--two">
@@ -61,19 +91,6 @@ export function TemplatePersistencePanel(props: TemplatePersistencePanelProps) {
           </label>
         </div>
 
-        <div className="template-meta-grid">
-          <article className="meta-card">
-            <span>Template id</span>
-            <strong>{persistedTemplate?.id ?? "Not saved yet"}</strong>
-            <p>{persistedTemplate ? `Updated ${persistedTemplate.updatedAt}` : "Save this draft to get a ULID-backed share link."}</p>
-          </article>
-          <article className="meta-card">
-            <span>Share link</span>
-            <strong>{shareUrl ?? "Unavailable"}</strong>
-            <p>{shareUrl ? "Recipients can open this path and upload their own compatible file." : "A share link appears after the first successful save."}</p>
-          </article>
-        </div>
-
         <div className="template-actions">
           <button className="secondary-button" type="button" disabled={!hasConfiguration || isBusy} onClick={onCreate}>
             Save as new
@@ -84,11 +101,12 @@ export function TemplatePersistencePanel(props: TemplatePersistencePanelProps) {
           <button className="secondary-button secondary-button--inline" type="button" disabled={!persistedTemplate || isBusy} onClick={onDetach}>
             Work locally
           </button>
+          <button className="secondary-button secondary-button--inline" type="button" disabled={!shareUrl} onClick={() => void handleCopyLink()}>
+            {copyState === "copied" ? "Copied" : copyState === "error" ? "Copy failed" : "Copy link"}
+          </button>
         </div>
 
-        {hasUnsavedChanges && persistedTemplate && (
-          <p className="validation-message">Current edits are local only until you press Update.</p>
-        )}
+        {hasUnsavedChanges && persistedTemplate && <p className="validation-message">Current edits are local only until you press Update.</p>}
         {statusMessage && <p className="template-feedback">{statusMessage}</p>}
         {errorMessage && <p className="validation-message">{errorMessage}</p>}
       </div>
